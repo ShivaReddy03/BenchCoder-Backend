@@ -8,3 +8,7 @@ db.sqlite3
 Dockerfile
 docker-compose.yml
 README.md
+venv
+.venv
+.pytest_cache
+artifacts

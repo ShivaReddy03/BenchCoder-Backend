@@ -11,3 +11,7 @@ venv/
 # Ignore SQLite DB file
 db.sqlite3
 
+
+.env
+.env.*
+!.env.example

@@ -1,52 +1,58 @@
-version: "3.8"
-
 services:
   db:
-    image: postgres:13
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: benchcoder
+      POSTGRES_USER: benchcoder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-benchcoder-local}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=BenchCoder
-      - POSTGRES_USER=BenchCoder_user
-      - POSTGRES_PASSWORD=BenchCoder_password
-    ports:
-      - "5432:5432"
-
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchcoder -d benchcoder"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
   redis:
-    image: redis:6-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
   web:
     build: .
-    command: gunicorn --bind 0.0.0.0:8000 BenchCoder.wsgi:application
-    volumes:
-      - .:/app
+    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 30 BenchCoder.wsgi:application"
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://BenchCoder_user:BenchCoder_password@db:5432/BenchCoder
-      - REDIS_URL=redis://redis:6379/0
+    environment: &app_environment
+      USE_POSTGRES: "true"
+      DATABASE_URL: postgresql://benchcoder:${POSTGRES_PASSWORD:-benchcoder-local}@db:5432/benchcoder
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      DEBUG: ${DEBUG:-false}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     depends_on:
-      - db
-      - redis
-
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
   celery:
     build:
       context: .
       dockerfile: Dockerfile.celery
-    volumes:
-      - .:/app
     environment:
-      - DATABASE_URL=postgresql://BenchCoder_user:BenchCoder_password@db:5432/BenchCoder
-      - REDIS_URL=redis://redis:6379/0
+      <<: *app_environment
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - db
-      - redis
-      - web
-
+      web:
+        condition: service_healthy
+    restart: unless-stopped
 volumes:
   postgres_data:
-  redis_data:
