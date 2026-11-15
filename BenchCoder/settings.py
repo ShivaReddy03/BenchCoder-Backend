@@ -29,6 +29,8 @@ INSTALLED_APPS = [
     'problems',
     'submissions',
     'judge',
+    'hints',
+    'solutions',
 ]
 
 MIDDLEWARE = [
@@ -67,8 +69,12 @@ database_url = os.environ.get('DATABASE_URL') if use_postgres else None
 
 if database_url:
     DATABASES = {
-        'default': dj_database_url.config(default=database_url, conn_max_age=600, ssl_require=False)
+        'default': dj_database_url.config(default=database_url, conn_max_age=60, conn_health_checks=True, ssl_require=False)
     }
+    DATABASES['default'].setdefault('OPTIONS', {}).update({
+        'connect_timeout': 10, 'keepalives': 1, 'keepalives_idle': 15,
+        'keepalives_interval': 5, 'keepalives_count': 3,
+    })
 else:
     DATABASES = {
         'default': {
@@ -137,3 +143,23 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 }
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_CONCURRENCY = 2
+
+# Optional AI assistance: never expose the API key to the browser.
+AI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+AI_HINT_MODEL = os.environ.get('AI_HINT_MODEL', 'gpt-4.1-mini')
+AI_SOLUTION_MODEL = os.environ.get('AI_SOLUTION_MODEL', 'gpt-4.1-mini')
+AI_SOLUTIONS_DAILY_LIMIT = int(os.environ.get('AI_SOLUTIONS_DAILY_LIMIT', '10'))
+AI_SOLUTIONS_GLOBAL_DAILY_LIMIT = int(os.environ.get('AI_SOLUTIONS_GLOBAL_DAILY_LIMIT', '100'))
+AI_EMBEDDING_MODEL = os.environ.get('AI_EMBEDDING_MODEL', 'text-embedding-3-small')
+AI_HINTS_DAILY_LIMIT = int(os.environ.get('AI_HINTS_DAILY_LIMIT', '20'))
+AI_HINTS_GLOBAL_DAILY_LIMIT = int(os.environ.get('AI_HINTS_GLOBAL_DAILY_LIMIT', '200'))
+
+AI_HINTS_SIMILARITY_THRESHOLD = float(os.environ.get('AI_HINTS_SIMILARITY_THRESHOLD', '0.25'))
+
+# Pinecone is optional; explicit mode prevents silently falling back on remote failures.
+AI_RETRIEVAL_BACKEND = os.environ.get('AI_RETRIEVAL_BACKEND', 'local').lower()
+PINECONE_API_KEY = os.environ.get('PINECONE_API_KEY', '')
+PINECONE_INDEX_HOST = os.environ.get('PINECONE_INDEX_HOST', '')
+PINECONE_NAMESPACE = os.environ.get('PINECONE_NAMESPACE', 'benchcoder-knowledge-v1')
+PINECONE_EMBEDDING_FIELD = os.environ.get('PINECONE_EMBEDDING_FIELD', 'chunk_text')
+PINECONE_EMBEDDING_MODEL = os.environ.get('PINECONE_EMBEDDING_MODEL', 'text-embedding-3-small')

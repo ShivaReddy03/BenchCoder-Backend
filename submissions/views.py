@@ -12,8 +12,18 @@ class SubmissionListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        problem_id = request.query_params.get('problem')
+        if problem_id is not None:
+            try:
+                problem_id = int(problem_id)
+                if problem_id <= 0 or problem_id > 9223372036854775807:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response({'detail': "'problem' must be a positive integer."}, status=status.HTTP_400_BAD_REQUEST)
         recover_stale_submissions()
         submissions = Submission.objects.filter(user=request.user, kind='submit').select_related('problem', 'user').order_by('-submitted_at')
+        if problem_id is not None:
+            submissions = submissions.filter(problem_id=problem_id)
         return Response(SubmissionListSerializer(submissions, many=True).data)
 
 

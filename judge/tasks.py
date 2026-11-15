@@ -1,14 +1,14 @@
 from datetime import timedelta
 import time
 from celery import shared_task
-from django.db import transaction
+from django.db import transaction, close_old_connections, connections, OperationalError, InterfaceError
 from django.db.models import F
 from django.utils import timezone
 from submissions.models import Submission, ProblemSolve
 from .runner import execute, InfrastructureError
 
 
-def finish(submission_id, attempt, values):
+def _finish_once(submission_id, attempt, values):
     with transaction.atomic():
         sub = Submission.objects.select_for_update().select_related('problem').get(pk=submission_id)
         if sub.status != 'running' or sub.attempt != attempt:
@@ -23,18 +23,52 @@ def finish(submission_id, attempt, values):
                 type(sub.user).objects.filter(pk=sub.user_id).update(score=F('score') + sub.problem.points, problems_solved=F('problems_solved') + 1)
 
 
+def finish(submission_id, attempt, values):
+    # Docker work can outlive a remote database's idle connection timeout.
+    # Retry the entire guarded transaction, including an ambiguously acknowledged COMMIT.
+    for retry in range(3):
+        if not connections['default'].in_atomic_block:
+            close_old_connections()
+        try:
+            return _finish_once(submission_id, attempt, values)
+        except (OperationalError, InterfaceError):
+            if connections['default'].in_atomic_block:
+                raise
+            connections.close_all()
+            if retry == 2:
+                raise
+            time.sleep(.25)
+
+
 @shared_task(bind=True, max_retries=2, acks_late=True, reject_on_worker_lost=True)
 def judge_submission(self, submission_id):
-    # Compare-and-set: duplicate deliveries cannot concurrently claim the same job.
-    claimed = Submission.objects.filter(pk=submission_id, status='queued').update(status='running', started_at=timezone.now(), attempt=F('attempt') + 1)
-    if not claimed:
+    # A unique timestamp lets us recover an ambiguous claim without taking another worker's job.
+    claimed_at = timezone.now()
+    try:
+        if not connections['default'].in_atomic_block:
+            close_old_connections()
+        claimed = Submission.objects.filter(pk=submission_id, status='queued').update(status='running', started_at=claimed_at, attempt=F('attempt') + 1)
+        if not claimed:
+            return
+        sub = Submission.objects.select_related('problem').get(pk=submission_id)
+        attempt = sub.attempt
+        cases = sub.problem.test_cases.order_by('id')
+        if sub.kind == 'run':
+            cases = cases.filter(is_public=True)[:3]
+        cases = list(cases)
+        public_ids = set(sub.problem.test_cases.filter(is_public=True).order_by('id').values_list('id', flat=True)[:3])
+    except (OperationalError, InterfaceError) as exc:
+        if not connections['default'].in_atomic_block:
+            connections.close_all()
+        # Only roll back this delivery's claim; a duplicate worker may own a different claim.
+        Submission.objects.filter(pk=submission_id,status='running',started_at=claimed_at).update(status='queued',started_at=None)
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=exc,countdown=5)
+        Submission.objects.filter(pk=submission_id,status='queued').update(status='failed',verdict='OT',error_message='Database connection unavailable after retries. Please resubmit.',finished_at=timezone.now())
         return
-    sub = Submission.objects.select_related('problem').get(pk=submission_id)
-    attempt = sub.attempt
-    cases = sub.problem.test_cases.order_by('id')
-    if sub.kind == 'run':
-        cases = cases.filter(is_public=True)[:3]
-    cases = list(cases)
+    # No database connection or transaction is held while untrusted programs execute.
+    if not connections['default'].in_atomic_block:
+        connections.close_all()
     if not cases:
         finish(sub.id, attempt, {'status': 'failed', 'verdict': 'OT', 'error_message': 'No test cases are configured for this operation.'})
         return
@@ -43,7 +77,6 @@ def judge_submission(self, submission_id):
     verdict, message = 'AC', ''
     try:
         deadline = time.monotonic() + 120
-        public_ids = set(sub.problem.test_cases.filter(is_public=True).order_by('id').values_list('id', flat=True)[:3])
         for case in cases:
             if time.monotonic() >= deadline:
                 verdict, message = 'TLE', 'Total execution time limit exceeded.'
