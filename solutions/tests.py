@@ -80,7 +80,7 @@ class SolutionWorkflowTests(APITestCase):
         job = self.job()
         self.client.force_authenticate(self.other)
         self.assertEqual(self.client.get(reverse('solution-detail', args=[job.id])).status_code, 404)
-        self.assertEqual(self.client.post(reverse('solution-create'), {**self.payload, 'language': 'java'}).status_code, 400)
+        self.assertEqual(self.client.post(reverse('solution-create'), {**self.payload, 'language': 'ruby'}).status_code, 400)
         self.assertEqual(self.client.post(reverse('solution-create'), {**self.payload, 'code': 'x'*12001}).status_code, 400)
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get(reverse('solution-config')).status_code, 401)

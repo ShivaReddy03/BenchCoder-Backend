@@ -4,7 +4,7 @@ from django.db import models
 
 class Submission(models.Model):
     VERDICT_CHOICES = [(v, label) for v, label in [('AC', 'Accepted'), ('WA', 'Wrong Answer'), ('TLE', 'Time Limit Exceeded'), ('MLE', 'Memory Limit Exceeded'), ('RE', 'Runtime Error'), ('CE', 'Compilation Error'), ('OT', 'Infrastructure Error'), ('P', 'Pending')]]
-    LANGUAGE_CHOICES = [('python', 'Python'), ('javascript', 'JavaScript')]
+    LANGUAGE_CHOICES = [('python', 'Python'), ('javascript', 'JavaScript'), ('java', 'Java'), ('cpp', 'C++')]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     problem = models.ForeignKey('problems.Problem', on_delete=models.CASCADE)
     code = models.TextField()

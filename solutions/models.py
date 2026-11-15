@@ -6,7 +6,7 @@ class SolutionRequest(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     problem = models.ForeignKey('problems.Problem', on_delete=models.CASCADE)
     code = models.TextField(blank=True)
-    language = models.CharField(max_length=10, choices=[('python', 'Python'), ('javascript', 'JavaScript')])
+    language = models.CharField(max_length=10, choices=[('python', 'Python'), ('javascript', 'JavaScript'), ('java', 'Java'), ('cpp', 'C++')])
     status = models.CharField(max_length=12, default='queued', choices=[('queued', 'Queued'), ('running', 'Running'), ('completed', 'Completed'), ('failed', 'Failed')])
     fingerprint = models.CharField(max_length=64, db_index=True)
     explanation = models.TextField(blank=True)

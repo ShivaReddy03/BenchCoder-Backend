@@ -39,9 +39,18 @@ class SubmissionWorkflowTests(APITestCase):
     def test_ownership_and_language_validation(self):
         sub = Submission.objects.create(user=self.other, problem=self.problem, code='x', language='python')
         self.assertEqual(self.client.get(reverse('submission-detail', args=[sub.id])).status_code, 404)
-        self.assertEqual(self.client.post(reverse('submission-create'), {**self.payload, 'language': 'java'}).status_code, 400)
+        self.assertEqual(self.client.post(reverse('submission-create'), {**self.payload, 'language': 'ruby'}).status_code, 400)
         self.client.force_authenticate(None)
         self.assertEqual(self.client.post(reverse('submission-create'), self.payload).status_code, 401)
+
+    @patch('submissions.views.judge_submission.apply_async')
+    def test_compiled_languages_are_queued(self, dispatch):
+        for language in ('java', 'cpp'):
+            with self.subTest(language=language):
+                response = self.client.post(reverse('submission-create'), {**self.payload, 'language': language})
+                self.assertEqual(response.status_code, 202)
+                self.assertEqual(Submission.objects.get(pk=response.data['id']).language, language)
+        self.assertEqual(dispatch.call_count, 2)
 
     @patch('judge.tasks.execute')
     def test_acceptance_scores_once_duplicate_delivery_is_noop(self, execute):

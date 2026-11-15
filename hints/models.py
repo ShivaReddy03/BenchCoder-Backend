@@ -35,7 +35,7 @@ class HintRequest(models.Model):
     problem = models.ForeignKey('problems.Problem', on_delete=models.CASCADE)
     level = models.CharField(max_length=12, choices=[('concept','Concept'),('approach','Approach'),('debugging','Debugging')])
     code = models.TextField(blank=True)
-    language = models.CharField(max_length=10, choices=[('python','Python'),('javascript','JavaScript')], default='python')
+    language = models.CharField(max_length=10, choices=[('python','Python'),('javascript','JavaScript'),('java','Java'),('cpp','C++')], default='python')
     status = models.CharField(max_length=12, default='queued', choices=[('queued','Queued'),('running','Running'),('completed','Completed'),('failed','Failed')])
     hint = models.TextField(blank=True)
     retrieved_sources = models.JSONField(default=list)

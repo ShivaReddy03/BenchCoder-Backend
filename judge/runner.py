@@ -11,6 +11,8 @@ TIME_LIMIT = 3.0
 MEMORY_MB = 128
 LANGUAGES = {
     'python': ('python:3.12-slim', 'main.py', 'python -m py_compile /code/main.py', 'python /code/main.py'),
+    'java': ('eclipse-temurin:21-jdk', 'Main.java', 'javac -J-Xmx128m -d /tmp /code/Main.java', 'java -Xmx128m -Xss256k -XX:ActiveProcessorCount=1 -XX:ReservedCodeCacheSize=32m -cp /tmp Main'),
+    'cpp': ('gcc:14', 'main.cpp', 'g++ -std=c++17 -O2 -o /build/main /code/main.cpp', '/build/main'),
     'javascript': ('node:22-slim', 'main.js', 'node --check /code/main.js', 'node /code/main.js'),
 }
 
@@ -58,7 +60,7 @@ def execute(code, language, input_data):
                         old_volume.remove()
                     except docker.errors.DockerException:
                         pass
-        script = f'{check} > /tmp/stdout 2> /tmp/stderr; result=$?; if [ $result -ne 0 ]; then result=120; else timeout -s KILL 3 {command} < /code/input > /tmp/stdout 2> /tmp/stderr; result=$?; fi; head -c 65537 /tmp/stdout; head -c 65537 /tmp/stderr >&2; exit $result'
+        script = f'timeout -s KILL 30 {check} > /tmp/stdout 2> /tmp/stderr; result=$?; if [ $result -ne 0 ]; then result=120; else timeout -s KILL 3 {command} < /code/input > /tmp/stdout 2> /tmp/stderr; result=$?; fi; head -c 65537 /tmp/stdout; head -c 65537 /tmp/stderr >&2; exit $result'
         volume = client.volumes.create(labels={'benchcoder.runner': 'true'})
         staging = client.containers.create(image, ['true'], network_mode='none', read_only=True, volumes={volume.name: {'bind': '/code', 'mode': 'rw'}}, labels={'benchcoder.runner': 'true'})
         staging.put_archive('/code', archive({filename: code, 'input': input_data}))
@@ -68,8 +70,8 @@ def execute(code, language, input_data):
             image, ['sh', '-c', script], name='benchcoder-' + uuid.uuid4().hex,
             user='65534:65534', network_disabled=True, network_mode='none',
             read_only=True, cap_drop=['ALL'], security_opt=['no-new-privileges:true'],
-            pids_limit=32, nano_cpus=1000000000, mem_limit=f'{MEMORY_MB}m',
-            memswap_limit=f'{MEMORY_MB}m', tmpfs={'/tmp': 'rw,noexec,nosuid,size=16m,mode=1777'},
+            pids_limit=32, nano_cpus=1000000000, mem_limit=f'{512 if language in ("java", "cpp") else MEMORY_MB}m',
+            memswap_limit=f'{512 if language in ("java", "cpp") else MEMORY_MB}m', tmpfs={'/tmp': 'rw,noexec,nosuid,size=64m,mode=1777', '/build': 'rw,exec,nosuid,size=32m,mode=1777'},
             environment={'PYTHONPYCACHEPREFIX': '/tmp/cache', 'PYTHONDONTWRITEBYTECODE': '1'},
             volumes={volume.name: {'bind': '/code', 'mode': 'ro'}},
             working_dir='/code', log_config=docker.types.LogConfig(type='json-file', config={'max-size': '1m', 'max-file': '1'}),
@@ -82,7 +84,7 @@ def execute(code, language, input_data):
             container.reload()
             if container.status in ('exited', 'dead'):
                 break
-            if time.monotonic() - started > TIME_LIMIT:
+            if time.monotonic() - started > (35 if language in ('java', 'cpp') else TIME_LIMIT):
                 container.kill()
                 return {'verdict': 'TLE', 'output': '', 'error': 'Time limit exceeded.', 'time': TIME_LIMIT, 'memory': peak / 1048576}
             stats = container.stats(stream=False, one_shot=True)

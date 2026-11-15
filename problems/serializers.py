@@ -25,7 +25,7 @@ class ProblemSerializer(serializers.ModelSerializer):
         return TestCaseSerializer(obj.test_cases.filter(is_public=True).order_by('id')[:3], many=True).data
 
     def get_supported_languages(self, obj):
-        return ['python', 'javascript']
+        return ['python', 'javascript', 'java', 'cpp']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

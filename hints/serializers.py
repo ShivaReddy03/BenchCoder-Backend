@@ -7,7 +7,7 @@ class HintCreateSerializer(serializers.Serializer):
     problem = serializers.PrimaryKeyRelatedField(queryset=Problem.objects.all())
     level = serializers.ChoiceField(choices=['concept', 'approach', 'debugging'])
     code = serializers.CharField(max_length=12000, required=False, allow_blank=True, trim_whitespace=False, default='')
-    language = serializers.ChoiceField(choices=['python', 'javascript'], default='python')
+    language = serializers.ChoiceField(choices=['python', 'javascript', 'java', 'cpp'], default='python')
 
     def validate(self, attrs):
         if attrs['level'] == 'debugging' and not attrs['code'].strip():

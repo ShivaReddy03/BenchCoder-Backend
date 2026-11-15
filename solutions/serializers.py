@@ -6,7 +6,7 @@ from .models import SolutionRequest
 class SolutionCreateSerializer(serializers.Serializer):
     problem = serializers.PrimaryKeyRelatedField(queryset=Problem.objects.all())
     code = serializers.CharField(max_length=12000, required=False, allow_blank=True, trim_whitespace=False, default='')
-    language = serializers.ChoiceField(choices=['python', 'javascript'], default='python')
+    language = serializers.ChoiceField(choices=['python', 'javascript', 'java', 'cpp'], default='python')
 
 
 class SolutionSerializer(serializers.ModelSerializer):
